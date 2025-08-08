@@ -1,107 +1,148 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>最优路径</title>
-    <script>
-        // 要测试的URL列表
-        const targetUrls = [
-            'https://itxgo.com',
-            'https://wllgo.com',
-            'https://381661.xyz/'
-        ];
-        
-        // 存储延迟结果的数组
-        let latencyResults = [];
-        
-        // 测量单个URL的延迟
-        async function measureLatency(url) {
-            const startTime = performance.now();
-            try {
-                // 使用fetch API测量延迟
-                // 注意: 这里使用HEAD方法只获取头部信息，减少数据传输量
-                const response = await fetch(url, {
-                    method: 'HEAD',
-                    mode: 'no-cors', // 避免CORS问题
-                    cache: 'no-store' // 避免缓存影响
-                });
-                const endTime = performance.now();
-                return {
-                    url,
-                    latency: endTime - startTime,
-                    status: 'success'
-                };
-            } catch (error) {
-                return {
-                    url,
-                    latency: Infinity, // 如果出错，设置为无限大延迟
-                    status: 'error'
-                };
-            }
-        }
-        
-        // 测量所有URL的延迟
-        async function measureAllLatencies() {
-            const measurements = await Promise.all(targetUrls.map(measureLatency));
-            
-            // 过滤掉失败的测量
-            const validResults = measurements.filter(result => result.status === 'success');
-            
-            if (validResults.length === 0) {
-                // 如果所有测量都失败，默认跳转到第一个URL
-                window.location.href = targetUrls[0];
-                return;
-            }
-            
-            // 按延迟排序
-            validResults.sort((a, b) => a.latency - b.latency);
-            
-            // 存储结果供后续使用
-            latencyResults = validResults;
-            
-            // 跳转到延迟最低的URL
-            window.location.href = validResults[0].url;
-        }
-        
-        // 页面加载后开始测量
-        window.addEventListener('DOMContentLoaded', measureAllLatencies);
-    </script>
+    <title>最优路径选择</title>
     <style>
-        /* 添加一个加载动画让用户知道正在检测最佳路径 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
         .loader {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            inset: 0;
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
-            background: rgba(255, 255, 255, 0.9);
-            z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
         }
         
         .spinner {
-            border: 5px solid #f3f3f3;
-            border-top: 5px solid #3498db;
+            width: 60px;
+            height: 60px;
+            border: 4px solid #e3e3e3;
+            border-top: 4px solid #3498db;
             border-radius: 50%;
-            width: 50px;
-            height: 50px;
             animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        
+        .message {
+            color: #333;
+            font-size: 16px;
+            font-weight: 500;
+            text-align: center;
+        }
+        
+        .progress {
+            margin-top: 15px;
+            width: 200px;
+            height: 4px;
+            background: #e0e0e0;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #3498db, #2ecc71);
+            width: 0;
+            border-radius: 2px;
+            animation: progress 2s ease-in-out;
         }
         
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        @keyframes progress {
+            to { width: 100%; }
         }
     </style>
 </head>
 <body>
-    <!-- 加载动画 -->
     <div class="loader">
         <div class="spinner"></div>
-        <p>正在检测最佳访问路径...</p>
+        <div class="message">正在检测最佳访问路径...</div>
+        <div class="progress">
+            <div class="progress-bar"></div>
+        </div>
     </div>
+    
+    <script>
+        const URLS = [
+            'https://itxgo.com',
+            'https://wllgo.com', 
+            'https://381661.xyz'
+        ];
+        
+        const TIMEOUT = 5000; // 5秒超时
+        
+        async function testLatency(url) {
+            const start = performance.now();
+            
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), TIMEOUT);
+                
+                await fetch(url, {
+                    method: 'HEAD',
+                    mode: 'no-cors',
+                    cache: 'no-store',
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                return performance.now() - start;
+            } catch {
+                return Infinity;
+            }
+        }
+        
+        async function findBestUrl() {
+            try {
+                const results = await Promise.all(
+                    URLS.map(async url => ({
+                        url,
+                        latency: await testLatency(url)
+                    }))
+                );
+                
+                const validResults = results.filter(r => r.latency !== Infinity);
+                
+                if (validResults.length === 0) {
+                    throw new Error('所有URL都不可达');
+                }
+                
+                validResults.sort((a, b) => a.latency - b.latency);
+                return validResults[0].url;
+            } catch {
+                return URLS[0]; // 备选方案
+            }
+        }
+        
+        async function redirect() {
+            const bestUrl = await findBestUrl();
+            
+            // 添加短暂延迟让用户看到进度条完成
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            window.location.href = bestUrl;
+        }
+        
+        // 页面加载后立即开始检测
+        redirect();
+    </script>
 </body>
 </html>
