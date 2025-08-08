@@ -12,8 +12,9 @@
         }
         
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: system-ui, -apple-system, sans-serif;
+            background: light-dark(#ffffff, #1a1a1a);
+            color: light-dark(#333333, #e0e0e0);
             min-height: 100vh;
         }
         
@@ -24,60 +25,43 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
         }
         
         .spinner {
-            width: 60px;
-            height: 60px;
-            border: 4px solid #e3e3e3;
-            border-top: 4px solid #3498db;
+            width: 40px;
+            height: 40px;
+            border: 3px solid light-dark(#e0e0e0, #333333);
+            border-top: 3px solid light-dark(#007acc, #4fc3f7);
             border-radius: 50%;
             animation: spin 1s linear infinite;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
         }
         
         .message {
-            color: #333;
-            font-size: 16px;
-            font-weight: 500;
-            text-align: center;
-        }
-        
-        .progress {
-            margin-top: 15px;
-            width: 200px;
-            height: 4px;
-            background: #e0e0e0;
-            border-radius: 2px;
-            overflow: hidden;
-        }
-        
-        .progress-bar {
-            height: 100%;
-            background: linear-gradient(90deg, #3498db, #2ecc71);
-            width: 0;
-            border-radius: 2px;
-            animation: progress 2s ease-in-out;
+            font-size: 14px;
         }
         
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
         
-        @keyframes progress {
-            to { width: 100%; }
+        @media (prefers-color-scheme: dark) {
+            body {
+                background: #1a1a1a;
+                color: #e0e0e0;
+            }
+            
+            .spinner {
+                border-color: #333333;
+                border-top-color: #4fc3f7;
+            }
         }
     </style>
 </head>
 <body>
     <div class="loader">
         <div class="spinner"></div>
-        <div class="message">正在检测最佳访问路径...</div>
-        <div class="progress">
-            <div class="progress-bar"></div>
-        </div>
+        <div class="message">正在检测最佳路径...</div>
     </div>
     
     <script>
@@ -87,61 +71,24 @@
             'https://381661.xyz'
         ];
         
-        const TIMEOUT = 5000; // 5秒超时
-        
-        async function testLatency(url) {
+        async function testUrl(url) {
             const start = performance.now();
-            
             try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), TIMEOUT);
-                
-                await fetch(url, {
-                    method: 'HEAD',
-                    mode: 'no-cors',
-                    cache: 'no-store',
-                    signal: controller.signal
-                });
-                
-                clearTimeout(timeoutId);
-                return performance.now() - start;
+                await fetch(url, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
+                return { url, time: performance.now() - start };
             } catch {
-                return Infinity;
-            }
-        }
-        
-        async function findBestUrl() {
-            try {
-                const results = await Promise.all(
-                    URLS.map(async url => ({
-                        url,
-                        latency: await testLatency(url)
-                    }))
-                );
-                
-                const validResults = results.filter(r => r.latency !== Infinity);
-                
-                if (validResults.length === 0) {
-                    throw new Error('所有URL都不可达');
-                }
-                
-                validResults.sort((a, b) => a.latency - b.latency);
-                return validResults[0].url;
-            } catch {
-                return URLS[0]; // 备选方案
+                return { url, time: Infinity };
             }
         }
         
         async function redirect() {
-            const bestUrl = await findBestUrl();
-            
-            // 添加短暂延迟让用户看到进度条完成
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            window.location.href = bestUrl;
+            const results = await Promise.all(URLS.map(testUrl));
+            const fastest = results.reduce((best, current) => 
+                current.time < best.time ? current : best
+            );
+            location.href = fastest.url;
         }
         
-        // 页面加载后立即开始检测
         redirect();
     </script>
 </body>
