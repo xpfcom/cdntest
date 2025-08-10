@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>iTxGo🍃</title>
+<style>
+  body {
+    margin: 0;
+    background: #f3f4f6;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+  }
+  .segments {
+    display: flex;
+    gap: 10px;
+    transform: scale(1);
+    transition: 
+      transform 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 0.6s linear 0.1s,
+      filter 0.6s ease;
+  }
+  .segments.fade-out {
+    transform: scale(1.8);
+    opacity: 0;
+    filter: blur(8px);
+  }
+  .segment {
+    width: 28px;
+    height: 16px;
+    border-radius: 4px;
+    animation: light 1s infinite ease-in-out;
+  }
+  /* 纯色配色（参考截图） */
+  .segment:nth-child(1) { background: #6366f1; animation-delay: 0s; }     /* 紫蓝 */
+  .segment:nth-child(2) { background: #ec4899; animation-delay: 0.2s; }  /* 粉红 */
+  .segment:nth-child(3) { background: #0ea5e9; animation-delay: 0.4s; }  /* 天蓝 */
+  .segment:nth-child(4) { background: #10b981; animation-delay: 0.6s; }  /* 绿色 */
+  .segment:nth-child(5) { background: #f59e0b; animation-delay: 0.8s; }  /* 橙黄 */
+
+  @keyframes light {
+    0%,100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+</style>
+</head>
+<body>
+<div class="segments" id="loader">
+  <div class="segment"></div>
+  <div class="segment"></div>
+  <div class="segment"></div>
+  <div class="segment"></div>
+  <div class="segment"></div>
+</div>
+
+<script>
+const URLS=['https://itxgo.com','https://wllgo.com','https://381661.xyz'];
+const TIMEOUT=5000;
+
+function probe(url){
+  return new Promise((resolve)=>{
+    const start=performance.now();
+    const img=new Image();
+    img.crossOrigin = "anonymous"; // 避免跨域错误
+    img.src=url+'/favicon.ico?cb='+Date.now();
+    let done=false;
+    const finish=(ok)=>{
+      if(done) return;
+      done=true;
+      console.log(`检测 ${url} 结果: ${ok ? "可用" : "不可用"}`);
+      resolve({url,ok,time:ok?performance.now()-start:Infinity});
+    };
+    img.onload=()=>finish(true);
+    img.onerror=()=>finish(false);
+    setTimeout(()=>finish(false),TIMEOUT);
+  });
+}
+
+(async()=>{
+  console.log("开始测速...");
+  const results=await Promise.all(URLS.map(probe));
+  const ok=results.filter(r=>r.ok);
+  const target=ok.length ? ok.sort((a,b)=>a.time-b.time)[0].url : URLS[0];
+  console.log("即将跳转到:", target);
+
+  const loader=document.getElementById('loader');
+  loader.classList.add('fade-out');
+
+  // 跳转（动画 0.6s + 延迟 0.1s）
+  setTimeout(()=>{ 
+    window.location.href=target; 
+  }, 700);
+})();
+</script>
+</body>
+</html>
