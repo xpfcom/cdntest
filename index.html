@@ -18,11 +18,7 @@
   .segments {
     display: flex;
     gap: 10px;
-    transform: scale(1);
-    transition: 
-      transform 0.6s cubic-bezier(0.22, 1, 0.36, 1),
-      opacity 0.6s linear 0.1s,
-      filter 0.6s ease;
+    transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.6s linear 0.1s, filter 0.6s ease;
     margin-bottom: 20px;
   }
   .segments.fade-out {
@@ -56,6 +52,15 @@
     font-size: 14px;
   }
   
+  .status.error { color: #ef4444; }
+  
+  .results {
+    margin-top: 10px;
+    font-size: 12px;
+    color: #94a3b8;
+    text-align: center;
+  }
+  
   .retry-btn {
     margin-top: 20px;
     padding: 8px 16px;
@@ -66,42 +71,10 @@
     cursor: pointer;
     transition: background 0.2s;
     font-size: 14px;
+    display: none;
   }
   
-  .retry-btn:hover {
-    background: #cbd5e1;
-  }
-  
-  .retry-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  
-  .results {
-    margin-top: 15px;
-    font-size: 12px;
-    color: #94a3b8;
-    text-align: center;
-    max-width: 300px;
-  }
-  
-  .offline {
-    color: #ef4444;
-  }
-
-  @media (max-width: 480px) {
-    .segments {
-      gap: 8px;
-    }
-    .segment {
-      width: 24px;
-      height: 14px;
-    }
-    .status {
-      font-size: 13px;
-      max-width: 90%;
-    }
-  }
+  .retry-btn:hover { background: #cbd5e1; }
 </style>
 </head>
 <body>
@@ -115,7 +88,7 @@
 
 <div class="status" id="status">正在检测最优服务器...</div>
 <div class="results" id="results"></div>
-<button class="retry-btn" id="retryBtn" style="display: none;">重新检测</button>
+<button class="retry-btn" id="retryBtn">重新检测</button>
 
 <script>
 const SERVERS = [
@@ -124,156 +97,84 @@ const SERVERS = [
   { url: 'https://381661.xyz', name: 'Netlify' }
 ];
 
-const CONFIG = {
-  timeout: 3000
+const elements = {
+  loader: document.getElementById('loader'),
+  status: document.getElementById('status'),
+  results: document.getElementById('results'),
+  retryBtn: document.getElementById('retryBtn')
 };
 
 let isDetecting = false;
 
-// 测试单个服务器
+// 测试服务器
 async function testServer(server) {
   const start = performance.now();
   
-  try {
-    console.log(`正在测试 ${server.name}...`);
-    
-    // 使用随机参数确保不会被缓存
-    const randomParam = Math.random().toString(36).substring(7);
-    const timestamp = Date.now();
-    const testUrl = `${server.url}/favicon.ico?nocache=${timestamp}&rand=${randomParam}`;
-    
+  return new Promise((resolve) => {
     const img = new Image();
+    const timer = setTimeout(() => resolve({ ...server, ok: false, time: Infinity }), 3000);
     
-    const result = await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        reject(new Error('timeout'));
-      }, CONFIG.timeout);
-      
-      img.onload = () => {
-        clearTimeout(timer);
-        const time = performance.now() - start;
-        console.log(`${server.name} 成功: ${time.toFixed(0)}ms`);
-        resolve({ ...server, ok: true, time });
-      };
-      
-      img.onerror = () => {
-        clearTimeout(timer);
-        // 即使图片加载失败，也说明服务器是可达的
-        const time = performance.now() - start;
-        console.log(`${server.name} 可达 (图片失败): ${time.toFixed(0)}ms`);
-        resolve({ ...server, ok: true, time });
-      };
-      
-      // 确保不使用缓存
-      img.src = testUrl;
-    });
+    const finish = (ok) => {
+      clearTimeout(timer);
+      const time = performance.now() - start;
+      console.log(`${server.name}: ${ok ? '成功' : '失败'} ${time.toFixed(0)}ms`);
+      resolve({ ...server, ok, time });
+    };
     
-    return result;
-  } catch (error) {
-    console.log(`${server.name} 失败: ${error.message}`);
-    return { ...server, ok: false, time: Infinity };
-  }
+    img.onload = () => finish(true);
+    img.onerror = () => finish(true); // 404也算可达
+    img.src = `${server.url}/favicon.ico?t=${Date.now()}&r=${Math.random()}`;
+  });
 }
 
-// 更新状态
-function updateStatus(text, isError = false) {
-  const statusEl = document.getElementById('status');
-  statusEl.textContent = text;
-  statusEl.className = isError ? 'status offline' : 'status';
-}
-
-// 显示结果
-function showResults(results) {
-  const resultsEl = document.getElementById('results');
-  const available = results.filter(r => r.ok).sort((a, b) => a.time - b.time);
-  
-  if (available.length > 0) {
-    const summary = available.slice(0, 3).map(r => 
-      `${r.name}: ${r.time.toFixed(0)}ms`
-    ).join(' | ');
-    resultsEl.textContent = summary;
-  } else {
-    resultsEl.textContent = '所有服务器均不可用';
-  }
+// 更新界面
+function updateUI(status, results = '', isError = false) {
+  elements.status.textContent = status;
+  elements.status.className = isError ? 'status error' : 'status';
+  elements.results.textContent = results;
 }
 
 // 主检测函数
-async function runDetection() {
+async function detect() {
   if (isDetecting) return;
   
-  const loader = document.getElementById('loader');
-  const retryBtn = document.getElementById('retryBtn');
-  const resultsEl = document.getElementById('results');
+  isDetecting = true;
+  elements.retryBtn.style.display = 'none';
+  elements.loader.classList.remove('fade-out');
+  updateUI('正在检测最优服务器...');
   
   try {
-    isDetecting = true;
-    retryBtn.style.display = 'none';
-    retryBtn.disabled = true;
-    loader.classList.remove('fade-out');
-    resultsEl.textContent = '';
-    updateStatus('正在检测最优服务器...');
-    
-    console.log('开始服务器测速...');
-    
-    // 并发测试所有服务器
+    console.log('开始检测...');
     const results = await Promise.all(SERVERS.map(testServer));
-    
     console.table(results);
     
-    // 筛选可用服务器
     const available = results.filter(r => r.ok);
-    
     if (available.length === 0) {
-      throw new Error('所有服务器均不可用，请检查网络连接');
+      throw new Error('所有服务器均不可用');
     }
     
-    // 按延迟排序
     available.sort((a, b) => a.time - b.time);
     const best = available[0];
     
-    updateStatus(`检测完成，最优服务器: ${best.name} (${best.time.toFixed(0)}ms)`);
-    showResults(results);
+    const resultText = available.slice(0, 3).map(r => `${r.name}: ${r.time.toFixed(0)}ms`).join(' | ');
+    updateUI(`最优服务器: ${best.name} (${best.time.toFixed(0)}ms)`, resultText);
     
-    console.log(`选择最优服务器: ${best.name}, 延迟: ${best.time.toFixed(0)}ms`);
-    console.log('即将跳转到:', best.url);
-    
-    // 执行跳转
-    loader.classList.add('fade-out');
-    
-    setTimeout(() => {
-      console.log('正在跳转...');
-      window.location.href = best.url;
-    }, 700);
+    console.log('跳转到:', best.url);
+    elements.loader.classList.add('fade-out');
+    setTimeout(() => window.location.href = best.url, 700);
     
   } catch (error) {
     console.error('检测失败:', error);
-    updateStatus(error.message, true);
-    retryBtn.style.display = 'block';
+    updateUI(error.message, '', true);
+    elements.retryBtn.style.display = 'block';
   } finally {
     isDetecting = false;
-    retryBtn.disabled = false;
   }
 }
 
-// 网络状态监听
-window.addEventListener('online', () => {
-  updateStatus('网络已恢复，正在重新检测...');
-  setTimeout(runDetection, 1000);
-});
-
-window.addEventListener('offline', () => {
-  updateStatus('网络连接已断开', true);
-});
-
 // 初始化
-document.getElementById('retryBtn').addEventListener('click', runDetection);
-
-// 开始检测
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', runDetection);
-} else {
-  runDetection();
-}
+elements.retryBtn.onclick = detect;
+detect();
 </script>
 </body>
 </html>
