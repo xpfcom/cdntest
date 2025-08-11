@@ -3,15 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>iTxGo🍃</title>
+<title>iTxGo🍃 - 智能路由</title>
 <style>
   body {
     margin: 0;
     background: #f3f4f6;
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
     height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
   .segments {
     display: flex;
@@ -21,6 +23,7 @@
       transform 0.6s cubic-bezier(0.22, 1, 0.36, 1),
       opacity 0.6s linear 0.1s,
       filter 0.6s ease;
+    margin-bottom: 20px;
   }
   .segments.fade-out {
     transform: scale(1.8);
@@ -33,16 +36,71 @@
     border-radius: 4px;
     animation: light 1s infinite ease-in-out;
   }
-  /* 纯色配色（参考截图） */
-  .segment:nth-child(1) { background: #6366f1; animation-delay: 0s; }     /* 紫蓝 */
-  .segment:nth-child(2) { background: #ec4899; animation-delay: 0.2s; }  /* 粉红 */
-  .segment:nth-child(3) { background: #0ea5e9; animation-delay: 0.4s; }  /* 天蓝 */
-  .segment:nth-child(4) { background: #10b981; animation-delay: 0.6s; }  /* 绿色 */
-  .segment:nth-child(5) { background: #f59e0b; animation-delay: 0.8s; }  /* 橙黄 */
+  .segment:nth-child(1) { background: #6366f1; animation-delay: 0s; }
+  .segment:nth-child(2) { background: #ec4899; animation-delay: 0.2s; }
+  .segment:nth-child(3) { background: #0ea5e9; animation-delay: 0.4s; }
+  .segment:nth-child(4) { background: #10b981; animation-delay: 0.6s; }
+  .segment:nth-child(5) { background: #f59e0b; animation-delay: 0.8s; }
 
   @keyframes light {
     0%,100% { opacity: 0.4; }
     50% { opacity: 1; }
+  }
+  
+  .status {
+    color: #64748b;
+    margin-top: 20px;
+    text-align: center;
+    max-width: 80%;
+    line-height: 1.5;
+    font-size: 14px;
+  }
+  
+  .retry-btn {
+    margin-top: 20px;
+    padding: 8px 16px;
+    background: #e2e8f0;
+    border: none;
+    border-radius: 6px;
+    color: #334155;
+    cursor: pointer;
+    transition: background 0.2s;
+    font-size: 14px;
+  }
+  
+  .retry-btn:hover {
+    background: #cbd5e1;
+  }
+  
+  .retry-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  .results {
+    margin-top: 15px;
+    font-size: 12px;
+    color: #94a3b8;
+    text-align: center;
+    max-width: 300px;
+  }
+  
+  .offline {
+    color: #ef4444;
+  }
+
+  @media (max-width: 480px) {
+    .segments {
+      gap: 8px;
+    }
+    .segment {
+      width: 24px;
+      height: 14px;
+    }
+    .status {
+      font-size: 13px;
+      max-width: 90%;
+    }
   }
 </style>
 </head>
@@ -55,44 +113,167 @@
   <div class="segment"></div>
 </div>
 
-<script>
-const URLS=['https://itxgo.com','https://wllgo.com','https://381661.xyz'];
-const TIMEOUT=5000;
+<div class="status" id="status">正在检测最优服务器...</div>
+<div class="results" id="results"></div>
+<button class="retry-btn" id="retryBtn" style="display: none;">重新检测</button>
 
-function probe(url){
-  return new Promise((resolve)=>{
-    const start=performance.now();
-    const img=new Image();
-    img.crossOrigin = "anonymous"; // 避免跨域错误
-    img.src=url+'/favicon.ico?cb='+Date.now();
-    let done=false;
-    const finish=(ok)=>{
-      if(done) return;
-      done=true;
-      console.log(`检测 ${url} 结果: ${ok ? "可用" : "不可用"}`);
-      resolve({url,ok,time:ok?performance.now()-start:Infinity});
-    };
-    img.onload=()=>finish(true);
-    img.onerror=()=>finish(false);
-    setTimeout(()=>finish(false),TIMEOUT);
-  });
+<script>
+const SERVERS = [
+  { url: 'https://itxgo.com', name: 'CloudFlare' },
+  { url: 'https://wllgo.com', name: 'Vercel' },
+  { url: 'https://381661.xyz', name: 'Netlify' }
+];
+
+const CONFIG = {
+  timeout: 3000
+};
+
+let isDetecting = false;
+
+// 测试单个服务器
+async function testServer(server) {
+  const start = performance.now();
+  
+  try {
+    console.log(`正在测试 ${server.name}...`);
+    
+    // 使用随机参数确保不会被缓存
+    const randomParam = Math.random().toString(36).substring(7);
+    const timestamp = Date.now();
+    const testUrl = `${server.url}/favicon.ico?nocache=${timestamp}&rand=${randomParam}`;
+    
+    const img = new Image();
+    
+    const result = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error('timeout'));
+      }, CONFIG.timeout);
+      
+      img.onload = () => {
+        clearTimeout(timer);
+        const time = performance.now() - start;
+        console.log(`${server.name} 成功: ${time.toFixed(0)}ms`);
+        resolve({ ...server, ok: true, time });
+      };
+      
+      img.onerror = () => {
+        clearTimeout(timer);
+        // 即使图片加载失败，也说明服务器是可达的
+        const time = performance.now() - start;
+        console.log(`${server.name} 可达 (图片失败): ${time.toFixed(0)}ms`);
+        resolve({ ...server, ok: true, time });
+      };
+      
+      // 确保不使用缓存
+      img.src = testUrl;
+    });
+    
+    return result;
+  } catch (error) {
+    console.log(`${server.name} 失败: ${error.message}`);
+    return { ...server, ok: false, time: Infinity };
+  }
 }
 
-(async()=>{
-  console.log("开始测速...");
-  const results=await Promise.all(URLS.map(probe));
-  const ok=results.filter(r=>r.ok);
-  const target=ok.length ? ok.sort((a,b)=>a.time-b.time)[0].url : URLS[0];
-  console.log("即将跳转到:", target);
+// 更新状态
+function updateStatus(text, isError = false) {
+  const statusEl = document.getElementById('status');
+  statusEl.textContent = text;
+  statusEl.className = isError ? 'status offline' : 'status';
+}
 
-  const loader=document.getElementById('loader');
-  loader.classList.add('fade-out');
+// 显示结果
+function showResults(results) {
+  const resultsEl = document.getElementById('results');
+  const available = results.filter(r => r.ok).sort((a, b) => a.time - b.time);
+  
+  if (available.length > 0) {
+    const summary = available.slice(0, 3).map(r => 
+      `${r.name}: ${r.time.toFixed(0)}ms`
+    ).join(' | ');
+    resultsEl.textContent = summary;
+  } else {
+    resultsEl.textContent = '所有服务器均不可用';
+  }
+}
 
-  // 跳转（动画 0.6s + 延迟 0.1s）
-  setTimeout(()=>{ 
-    window.location.href=target; 
-  }, 700);
-})();
+// 主检测函数
+async function runDetection() {
+  if (isDetecting) return;
+  
+  const loader = document.getElementById('loader');
+  const retryBtn = document.getElementById('retryBtn');
+  const resultsEl = document.getElementById('results');
+  
+  try {
+    isDetecting = true;
+    retryBtn.style.display = 'none';
+    retryBtn.disabled = true;
+    loader.classList.remove('fade-out');
+    resultsEl.textContent = '';
+    updateStatus('正在检测最优服务器...');
+    
+    console.log('开始服务器测速...');
+    
+    // 并发测试所有服务器
+    const results = await Promise.all(SERVERS.map(testServer));
+    
+    console.table(results);
+    
+    // 筛选可用服务器
+    const available = results.filter(r => r.ok);
+    
+    if (available.length === 0) {
+      throw new Error('所有服务器均不可用，请检查网络连接');
+    }
+    
+    // 按延迟排序
+    available.sort((a, b) => a.time - b.time);
+    const best = available[0];
+    
+    updateStatus(`检测完成，最优服务器: ${best.name} (${best.time.toFixed(0)}ms)`);
+    showResults(results);
+    
+    console.log(`选择最优服务器: ${best.name}, 延迟: ${best.time.toFixed(0)}ms`);
+    console.log('即将跳转到:', best.url);
+    
+    // 执行跳转
+    loader.classList.add('fade-out');
+    
+    setTimeout(() => {
+      console.log('正在跳转...');
+      window.location.href = best.url;
+    }, 700);
+    
+  } catch (error) {
+    console.error('检测失败:', error);
+    updateStatus(error.message, true);
+    retryBtn.style.display = 'block';
+  } finally {
+    isDetecting = false;
+    retryBtn.disabled = false;
+  }
+}
+
+// 网络状态监听
+window.addEventListener('online', () => {
+  updateStatus('网络已恢复，正在重新检测...');
+  setTimeout(runDetection, 1000);
+});
+
+window.addEventListener('offline', () => {
+  updateStatus('网络连接已断开', true);
+});
+
+// 初始化
+document.getElementById('retryBtn').addEventListener('click', runDetection);
+
+// 开始检测
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', runDetection);
+} else {
+  runDetection();
+}
 </script>
 </body>
 </html>
